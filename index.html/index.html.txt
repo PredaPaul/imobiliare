@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EuroHouse - Imobiliare</title>
+    <!-- FontAwesome pentru pictograme -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Leaflet CSS pentru hartă -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        :root {
+            --bg-body: #f8f9fa;
+            --bg-card: #ffffff;
+            --text-main: #2d3748;
+            --text-muted: #718096;
+            --border-color: #e2e8f0;
+            --primary: #3182ce;
+            --primary-hover: #2b6cb0;
+            --danger: #e53e3e;
+            --radius-md: 12px;
+            --radius-sm: 8px;
+            --shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+        }
+
+        [data-theme="dark"] {
+            --bg-body: #1a202c;
+            --bg-card: #2d3748;
+            --text-main: #f7fafc;
+            --text-muted: #a0aec0;
+            --border-color: #4a5568;
+            --primary: #4299e1;
+            --primary-hover: #3182ce;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: var(--bg-body); color: var(--text-main); transition: background 0.3s; padding-bottom: 50px; }
+        
+        header { background: var(--bg-card); border-bottom: 1px solid var(--border-color); padding: 15px 5%; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+        .logo { font-size: 24px; font-weight: 800; color: var(--primary); display: flex; align-items: center; gap: 8px; cursor: pointer; }
+        .nav-actions { display: flex; align-items: center; gap: 15px; }
+
+        .container { max-width: 1600px; margin: 30px auto; padding: 0 20px; display: grid; grid-template-columns: 1fr 500px; gap: 30px; }
+        @media (max-width: 1024px) { .container { grid-template-columns: 1fr; } }
+
+        /* Filtre & Grid */
+        .filters-panel { background: var(--bg-card); padding: 20px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; }
+        .filter-group { flex: 1; min-width: 150px; display: flex; flex-direction: column; gap: 5px; }
+        input, select, textarea { width: 100%; padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: var(--bg-body); color: var(--text-main); font-size: 14px; }
+        
+        .properties-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .properties-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 24px; }
+        
+        /* Card */
+        .card { background: var(--bg-card); border-radius: var(--radius-md); border: 1px solid var(--border-color); overflow: hidden; position: relative; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
+        .card:hover { transform: translateY(-5px); box-shadow: var(--shadow); }
+        .card img { width: 100%; height: 200px; object-fit: cover; }
+        .card-body { padding: 20px; }
+        .card-price { font-size: 22px; font-weight: 800; color: var(--primary); }
+        .fav-btn { position: absolute; top: 15px; right: 15px; background: white; border: none; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--danger); cursor: pointer; box-shadow: var(--shadow); z-index: 10; font-size: 16px; }
+        .fav-btn.active { background: var(--danger); color: white; }
+
+        /* === HARTA MODIFICATĂ (Rămâne fixă pe loc la scroll) === */
+        #map { height: 650px; border-radius: var(--radius-md); border: 1px solid var(--border-color); position: relative; z-index: 10; }
+        .admin-form { background: var(--bg-card); padding: 20px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-top: 25px; display: flex; flex-direction: column; gap: 12px; }
+
+        /* Butoane universale */
+        .btn-primary { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: var(--radius-sm); cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; justify-content: center; }
+        .btn-primary:hover { background: var(--primary-hover); }
+        .btn-danger { background: var(--danger); color: white; border: none; padding: 10px 20px; border-radius: var(--radius-sm); cursor: pointer; font-weight: 600; }
+        .w-100 { width: 100%; }
+
+        /* Modale */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.2s; z-index: 1000; }
+        .modal-overlay.active { opacity: 1; pointer-events: auto; }
+        .modal-content { background: var(--bg-card); padding: 25px; border-radius: var(--radius-md); width: 90%; max-width: 600px; position: relative; max-height: 90vh; overflow-y: auto; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; }
+        .close-btn { background: none; border: none; font-size: 28px; color: var(--text-muted); cursor: pointer; }
+        
+        .input-group { position: relative; display: flex; align-items: center; }
+        .input-group i { position: absolute; left: 12px; color: var(--text-muted); }
+        .input-group input { padding-left: 35px; }
+
+        #emptyState { text-align: center; padding: 50px 20px; color: var(--text-muted); display: none; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo" onclick="app.resetView()"><i class="fas fa-home"></i> EuroHouse</div>
+        <div class="nav-actions">
+            <button class="btn-primary" onclick="app.showFavorites()"><i class="fas fa-heart"></i> <span id="favCount">0</span></button>
+            <button class="btn-primary" onclick="app.toggleTheme()"><i id="themeIcon" class="fas fa-moon"></i></button>
+            <div id="authArea"></div>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Partea Stângă: Filtre și Grid-ul de proprietăți -->
+        <div>
+            <div class="filters-panel">
+                <div class="filter-group" style="flex: 2;">
+                    <label>Caută oraș sau zonă</label>
+                    <input type="text" id="searchInput" oninput="app.applyFilters()" placeholder="Ex: Cluj, Central, Bucuresti...">
+                </div>
+                <div class="filter-group">
+                    <label>Preț maxim (€)</label>
+                    <input type="number" id="maxPrice" oninput="app.applyFilters()" placeholder="Oricât">
+                </div>
+                <div class="filter-group">
+                    <label>Tip Contract</label>
+                    <select id="typeFilter" onchange="app.applyFilters()">
+                        <option value="all">Toate</option>
+                        <option value="vanzare">De Vânzare</option>
+                        <option value="inchiriere">De Închiriat</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Camere minime: <span id="roomsVal">1</span></label>
+                    <input type="range" id="roomsFilter" min="1" max="5" value="1" oninput="document.getElementById('roomsVal').innerText=this.value; app.applyFilters();">
+                </div>
+                <button class="btn-danger" onclick="app.resetFilters()">Resetare</button>
+            </div>
+
+            <div class="properties-header">
+                <h2 id="gridTitle">Proprietăți recomandate</h2>
+                <span id="resultsCount">0 rezultate</span>
+            </div>
+
+            <div id="emptyState">
+                <i class="fas fa-search-minus" style="font-size: 48px; margin-bottom: 10px;"></i>
+                <p>Nu am găsit nicio proprietate care să se potrivească criteriilor tale.</p>
+            </div>
+
+            <div class="properties-grid" id="propertiesGrid"></div>
+        </div>
+
+        <!-- Partea Dreaptă: Hartă și Panou Admin -->
+        <div>
+            <div id="map"></div>
+            
+            <div id="adminPanel" style="display: none;">
+                <form class="admin-form" onsubmit="app.handleUpload(event)">
+                    <h3><i class="fas fa-plus-circle"></i> Adaugă un anunț nou</h3>
+                    <input type="text" id="addCity" placeholder="Oraș" required>
+                    <input type="text" id="addZone" placeholder="Zonă/Cartier" required>
+                    <input type="number" id="addPrice" placeholder="Preț (€)" required>
+                    <input type="number" id="addRooms" placeholder="Număr camere" min="1" required>
+                    <select id="addType">
+                        <option value="vanzare">De Vânzare</option>
+                        <option value="inchiriere">De Închiriat</option>
+                    </select>
+                    <button type="submit" class="btn-primary w-100">Publică Anunțul</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DETALII PROPRIETATE -->
+    <div id="detailsModal" class="modal-overlay" onclick="app.checkCloseModal(event)">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="mTitle">Detalii Proprietate</h2>
+                <button class="close-btn" onclick="app.closeModals()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <img id="mImg" src="" alt="" style="width:100%; height:300px; object-fit:cover; border-radius:var(--radius-md); margin-bottom:15px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                    <span id="mZone" style="color:var(--text-muted); font-size:16px;"></span>
+                    <span id="mPrice" style="font-size:26px; font-weight:800; color:var(--primary);"></span>
+                </div>
+                <p style="margin-bottom:20px; font-size:16px;">
+                    <i class="fas fa-bed"></i> Compartimentare: <strong id="mRooms"></strong> camere. <br>
+                    <i class="fas fa-user-shield"></i> Proprietar/Agent: <strong id="mOwner"></strong>
+                </p>
+                
+                <div id="mortgageCalculator" style="margin-bottom:20px;"></div>
+
+                <div style="display:flex; gap:10px;">
+                    <button class="btn-primary flex-1" onclick="app.openMessageModal()"><i class="fas fa-paper-plane"></i> Trimite Mesaj</button>
+                    <button id="deleteBtn" class="btn-danger" onclick="app.handleDelete()" style="display:none;"><i class="fas fa-trash"></i> Șterge Anunț</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL MESAJ -->
+    <div id="messageModal" class="modal-overlay" onclick="app.checkCloseModal(event)">
+        <div class="modal-content" style="max-width: 450px;">
+            <div class="modal-header">
+                <h2>Contactează Proprietarul</h2>
+                <button class="close-btn" onclick="app.closeModals()">&times;</button>
+            </div>
+            <form onsubmit="app.sendMessage(event)" style="display:flex; flex-direction:column; gap:15px;">
+                <input type="text" placeholder="Numele tău" required>
+                <input type="email" placeholder="Email-ul tău" required>
+                <textarea rows="4" placeholder="Sunt interesat de această proprietate..." required></textarea>
+                <button type="submit" class="btn-primary">Trimite solicitarea</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL AUTENTIFICARE / ÎNREGISTRARE -->
+    <div id="loginModal" class="modal-overlay" onclick="app.checkCloseModal(event)">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h2 id="authTitle">Autentificare</h2>
+                <button class="close-btn" onclick="app.closeModals()">&times;</button>
+            </div>
+            <div class="modal-body">
+                
+                <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                    <button class="btn-primary w-100" id="tabLogin" onclick="app.switchAuthTab('login')">Login</button>
+                    <button class="btn-outline w-100" id="tabReg" onclick="app.switchAuthTab('register')" style="background: transparent; border: 1px solid var(--primary); color: var(--text-main); border-radius: var(--radius-sm); padding: 10px; cursor:pointer; font-weight:600;">Înregistrare</button>
+                </div>
+
+                <!-- Formularul 1: LOGIN -->
+                <form id="formLogin" class="admin-form" onsubmit="app.handleLogin(event)" style="margin-top:0; padding:0; border:none; background:transparent;">
+                    <div class="input-group">
+                        <i class="fas fa-envelope"></i>
+                        <input type="email" id="loginEmail" placeholder="Adresa de email" required>
+                    </div>
+                    <div class="input-group" style="margin-top:12px; margin-bottom:15px;">
+                        <i class="fas fa-lock"></i>
+                        <input type="password" id="loginPass" placeholder="Parola" required>
+                    </div>
+                    <button type="submit" class="btn-primary w-100">Intră în cont</button>
+                </form>
+
+                <!-- Formularul 2: REGISTER -->
+                <form id="formRegister" class="admin-form" onsubmit="app.handleRegister(event)" style="display: none; margin-top:0; padding:0; border:none; background:transparent;">
+                    <div class="input-group">
+                        <i class="fas fa-user"></i>
+                        <input type="text" id="regName" placeholder="Numele tău" required>
+                    </div>
+                    <div class="input-group" style="margin-top:12px;">
+                        <i class="fas fa-envelope"></i>
+                        <input type="email" id="regEmail" placeholder="Adresa de email" required>
+                    </div>
+                    <div class="input-group" style="margin-top:12px; margin-bottom:15px;">
+                        <i class="fas fa-lock"></i>
+                        <input type="password" id="regPass" placeholder="Parola" required>
+                    </div>
+                    <button type="submit" class="btn-primary w-100">Creează cont</button>
+                </form>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS pentru Mapă -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        const Notification = {
+            show(message, type = 'info') {
+                const toast = document.createElement('div');
+                toast.style.position = 'fixed';
+                toast.style.bottom = '20px';
+                toast.style.right = '20px';
+                toast.style.padding = '12px 24px';
+                toast.style.borderRadius = '8px';
+                toast.style.color = '#fff';
+                toast.style.background = type === 'success' ? '#2ecc71' : '#34495e';
+                toast.style.zIndex = '10000';
+                toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                toast.innerText = message;
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 3000);
+            }
+        };
+
+        class App {
+            constructor() {
+                const defaultProps = [
+                    { id: 1, city: "Cluj-Napoca", zone: "Gheorgheni", price: 125000, rooms: 2, type: "vanzare", owner: "admin", img: "https://images.unsplash.com/photo-1570129477492-45c003edd2be?auto=format&fit=crop&w=600", lat: 46.7712, lng: 23.6234 },
+                    { id: 2, city: "București", zone: "Universitate", price: 650, rooms: 1, type: "inchiriere", owner: "Andrei", img: "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=600", lat: 44.4355, lng: 26.1025 },
+                    { id: 3, city: "Brașov", zone: "Centrul Istoric", price: 195000, rooms: 3, type: "vanzare", owner: "Maria", img: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=600", lat: 45.6521, lng: 25.6015 },
+                    { id: 4, city: "Timișoara", zone: "Iosefin", price: 400, rooms: 2, type: "inchiriere", owner: "ImobVest", img: "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=600", lat: 45.7489, lng: 21.2114 },
+                    { id: 5, city: "București", zone: "Primaverii", price: 420000, rooms: 4, type: "vanzare", owner: "EliteLuxury", img: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=600", lat: 44.4678, lng: 26.0911 },
+                    { id: 6, city: "Cluj-Napoca", zone: "Mănăștur", price: 500, rooms: 2, type: "inchiriere", owner: "Vasile", img: "https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?auto=format&fit=crop&w=600", lat: 46.7582, lng: 23.5594 },
+                    { id: 7, city: "Iași", zone: "Copou", price: 115000, rooms: 2, type: "vanzare", owner: "Elena", img: "https://images.unsplash.com/photo-1484154218962-a197022b5858?auto=format&fit=crop&w=600", lat: 47.1825, lng: 27.5621 },
+                    { id: 8, city: "Constanța", zone: "Faleză Nord", price: 850, rooms: 3, type: "inchiriere", owner: "SeaRent", img: "https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=600", lat: 44.1984, lng: 28.6510 },
+                    { id: 9, city: "Sibiu", zone: "Centru", price: 145000, rooms: 3, type: "vanzare", owner: "admin", img: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=600", lat: 45.7983, lng: 24.1501 },
+                    { id: 10, city: "București", zone: "Titan", price: 89000, rooms: 2, type: "vanzare", owner: "Radu", img: "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=600", lat: 44.4261, lng: 26.1754 }
+                ];
+
+                this.props = JSON.parse(localStorage.getItem('eh_props')) || defaultProps;
+                this.favs = JSON.parse(localStorage.getItem('eh_favs')) || [];
+                this.user = localStorage.getItem('eh_user') || null;
+                this.theme = localStorage.getItem('eh_theme') || 'light';
+                this.activeId = null;
+                this.markers = [];
+
+                this.initTheme();
+                this.initMap();
+                this.renderAuth();
+                this.updateFavs();
+                this.resetView();
+            }
+
+            initMap() {
+                this.map = L.map('map').setView([45.9432, 24.9668], 6);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(this.map);
+            }
+
+            updateMap(data) {
+                this.markers.forEach(m => this.map.removeLayer(m));
+                this.markers = [];
+
+                data.forEach(p => {
+                    const marker = L.marker([p.lat, p.lng])
+                        .addTo(this.map)
+                        .bindPopup(`<b>${p.city} - ${p.zone}</b><br>${p.price.toLocaleString()} €`);
+                    this.markers.push(marker);
+                });
+
+                if(data.length > 0) {
+                    const group = new L.featureGroup(this.markers);
+                    this.map.fitBounds(group.getBounds().pad(0.1));
+                }
+            }
+
+            render(data) {
+                const grid = document.getElementById('propertiesGrid');
+                grid.innerHTML = '';
+                document.getElementById('resultsCount').innerText = `${data.length} rezultate`;
+                document.getElementById('emptyState').style.display = data.length ? 'none' : 'block';
+
+                data.forEach(p => {
+                    const isFav = this.favs.includes(p.id);
+                    const card = document.createElement('div');
+                    card.className = 'card';
+                    card.onclick = () => this.openDetails(p.id);
+                    card.innerHTML = `
+                        <button class="fav-btn ${isFav ? 'active' : ''}" onclick="app.toggleFav(event, ${p.id})">
+                            <i class="fa-${isFav ? 'solid' : 'regular'} fa-heart"></i>
+                        </button>
+                        <img src="${p.img}" alt="${p.city}">
+                        <div class="card-body">
+                            <div class="card-price">${p.price.toLocaleString()} €</div>
+                            <h3>${p.city} - ${p.zone}</h3>
+                            <p style="color: var(--text-muted); font-size: 14px; margin-top: 10px;">
+                                <i class="fas fa-door-open"></i> ${p.rooms} Camere • ${p.type.toUpperCase()}
+                            </p>
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+
+                this.updateMap(data); 
+            }
+
+            applyFilters() {
+                const search = document.getElementById('searchInput').value.toLowerCase();
+                const maxPrice = Number(document.getElementById('maxPrice').value) || Infinity;
+                const type = document.getElementById('typeFilter').value;
+                const rooms = Number(document.getElementById('roomsFilter').value);
+
+                const filtered = this.props.filter(p => {
+                    return (p.city.toLowerCase().includes(search) || p.zone.toLowerCase().includes(search)) &&
+                           p.price <= maxPrice &&
+                           (type === 'all' || p.type === type) &&
+                           p.rooms >= rooms;
+                });
+
+                document.getElementById('gridTitle').innerText = "Rezultate căutare";
+                this.render(filtered);
+            }
+
+            resetFilters() {
+                document.getElementById('searchInput').value = '';
+                document.getElementById('maxPrice').value = '';
+                document.getElementById('typeFilter').value = 'all';
+                document.getElementById('roomsFilter').value = '1';
+                document.getElementById('roomsVal').innerText = '1';
+                this.resetView();
+            }
+
+            resetView() {
+                document.getElementById('gridTitle').innerText = "Proprietăți recomandate";
+                this.render(this.props);
+            }
+
+            toggleFav(e, id) {
+                e.stopPropagation();
+                const idx = this.favs.indexOf(id);
+                if (idx > -1) {
+                    this.favs.splice(idx, 1);
+                    Notification.show("Eliminat din favorite");
+                } else {
+                    this.favs.push(id);
+                    Notification.show("Adăugat la favorite! ❤️", "success");
+                }
+                localStorage.setItem('eh_favs', JSON.stringify(this.favs));
+                this.updateFavs();
+                
+                if (document.getElementById('gridTitle').innerText === "Favoritele tale") {
+                    this.showFavorites();
+                } else {
+                    const btn = e.currentTarget;
+                    btn.classList.toggle('active');
+                    btn.innerHTML = `<i class="fa-${idx > -1 ? 'regular' : 'solid'} fa-heart"></i>`;
+                }
+            }
+
+            updateFavs() { document.getElementById('favCount').innerText = this.favs.length; }
+            
+            showFavorites() {
+                document.getElementById('gridTitle').innerText = "Favoritele tale";
+                this.render(this.props.filter(p => this.favs.includes(p.id)));
+            }
+
+            openDetails(id) {
+                const p = this.props.find(x => x.id === id);
+                this.activeId = id;
+                
+                document.getElementById('mImg').src = p.img;
+                document.getElementById('mTitle').innerText = p.city;
+                document.getElementById('mZone').innerHTML = `<i class="fas fa-map-marker-alt"></i> ${p.zone}`;
+                document.getElementById('mPrice').innerText = `${p.price.toLocaleString()} €`;
+                document.getElementById('mRooms').innerText = p.rooms;
+                document.getElementById('mOwner').innerText = p.owner;
+                
+                const calcDiv = document.getElementById('mortgageCalculator');
+                if (p.type === 'vanzare') {
+                    const avans = p.price * 0.15; 
+                    const credit = p.price - avans;
+                    const dobandaAnuala = 0.07; 
+                    const luni = 30 * 12; 
+                    const dobandaLuni = dobandaAnuala / 12;
+                    const rata = (credit * dobandaLuni) / (1 - Math.pow(1 + dobandaLuni, -luni));
+                    
+                    calcDiv.style.display = 'block';
+                    calcDiv.innerHTML = `
+                        <div style="background: var(--bg-body); padding: 15px; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                            <h4 style="margin-bottom: 5px; color: var(--text-main);"><i class="fas fa-calculator"></i> Calculator Rată Credit</h4>
+                            <p style="font-size: 13px; color: var(--text-muted);">Calcul estimativ pentru 30 ani, avans 15% (${avans.toLocaleString()} €) și dobândă de 7%.</p>
+                            <div style="font-size: 1.4rem; font-weight: 800; color: var(--primary); margin-top: 10px;">~ ${Math.round(rata).toLocaleString()} € / lună</div>
+                        </div>
+                    `;
+                } else {
+                    calcDiv.style.display = 'none'; 
+                }
+                
+                const delBtn = document.getElementById('deleteBtn');
+                delBtn.style.display = (this.user && (this.user === p.owner || this.user === 'admin')) ? 'block' : 'none';
+
+                this.openModal('detailsModal');
+            }
+
+            openMessageModal() {
+                this.closeModals(); 
+                this.openModal('messageModal'); 
+            }
+
+            sendMessage(e) {
+                e.preventDefault();
+                this.closeModals();
+                Notification.show("Mesajul tău a fost trimis cu succes către proprietar!", "success");
+            }
+
+            renderAuth() {
+                const area = document.getElementById('authArea');
+                const adminPanel = document.getElementById('adminPanel');
+                
+                if (this.user) {
+                    area.innerHTML = `
+                        <strong style="color:var(--text-main); margin-right:10px;">Salut, ${this.user}</strong>
+                        <button class="btn-danger" style="padding: 6px 12px;" onclick="app.logout()"><i class="fas fa-sign-out-alt"></i></button>
+                    `;
+                    adminPanel.style.display = 'block'; 
+                } else {
+                    area.innerHTML = `<button class="btn-primary" onclick="app.openModal('loginModal')"><i class="fas fa-user"></i> Login</button>`;
+                    adminPanel.style.display = 'none'; 
+                }
+            }
+
+            handleLogin(e) {
+                e.preventDefault();
+                const email = document.getElementById('loginEmail').value;
+                const user = email.split('@')[0]; 
+                
+                this.user = user;
+                localStorage.setItem('eh_user', user);
+                this.renderAuth();
+                this.closeModals();
+                Notification.show(`Autentificare reușită! Salut, ${user}.`, "success");
+                e.target.reset();
+            }
+
+            handleRegister(e) {
+                e.preventDefault();
+                const name = document.getElementById('regName').value;
+                
+                this.user = name;
+                localStorage.setItem('eh_user', name);
+                this.renderAuth();
+                this.closeModals();
+                Notification.show(`Cont creat cu succes! Bine ai venit, ${name}.`, "success");
+                e.target.reset();
+            }
+
+            switchAuthTab(tab) {
+                const formLogin = document.getElementById('formLogin');
+                const formRegister = document.getElementById('formRegister');
+                const tabLogin = document.getElementById('tabLogin');
+                const tabReg = document.getElementById('tabReg');
+                const authTitle = document.getElementById('authTitle');
+
+                if (tab === 'login') {
+                    formLogin.style.display = 'block';
+                    formRegister.style.display = 'none';
+                    authTitle.innerText = 'Autentificare';
+                    tabLogin.className = 'btn-primary w-100';
+                    tabReg.className = 'btn-outline w-100';
+                    tabReg.style.background = 'transparent';
+                    tabReg.style.color = 'var(--text-main)';
+                } else {
+                    formLogin.style.display = 'none';
+                    formRegister.style.display = 'block';
+                    authTitle.innerText = 'Înregistrare';
+                    tabReg.className = 'btn-primary w-100';
+                    tabReg.style.background = '';
+                    tabReg.style.color = '';
+                    tabLogin.className = 'btn-outline w-100';
+                    tabLogin.style.background = 'transparent';
+                    tabLogin.style.color = 'var(--text-main)';
+                }
+            }
+
+            logout() {
+                this.user = null;
+                localStorage.removeItem('eh_user');
+                this.renderAuth();
+                Notification.show("Te-ai delogat.");
+            }
+
+            handleUpload(e) {
+                e.preventDefault();
+                const noPhotoURL = "https://images.unsplash.com/photo-1518780664697-55e3ad937233?auto=format&fit=crop&w=600";
+                
+                const newP = {
+                    id: Date.now(),
+                    city: document.getElementById('addCity').value,
+                    zone: document.getElementById('addZone').value,
+                    price: Number(document.getElementById('addPrice').value),
+                    rooms: Number(document.getElementById('addRooms').value),
+                    type: document.getElementById('addType').value,
+                    owner: this.user,
+                    img: noPhotoURL, 
+                    lat: 45.9 + (Math.random() * 0.5 - 0.25), 
+                    lng: 24.9 + (Math.random() * 0.5 - 0.25)
+                };
+
+                this.props.unshift(newP);
+                localStorage.setItem('eh_props', JSON.stringify(this.props));
+                e.target.reset();
+                Notification.show("Proprietatea a fost publicată!", "success");
+                this.resetFilters();
+            }
+
+            handleDelete() {
+                if(!confirm("Ștergi acest anunț?")) return;
+                this.props = this.props.filter(p => p.id !== this.activeId);
+                localStorage.setItem('eh_props', JSON.stringify(this.props));
+                this.closeModals();
+                Notification.show("Anunț șters.");
+                this.resetFilters();
+            }
+
+            initTheme() {
+                document.documentElement.setAttribute('data-theme', this.theme);
+                this.updateThemeIcon();
+            }
+
+            toggleTheme() {
+                this.theme = this.theme === 'light' ? 'dark' : 'light';
+                localStorage.setItem('eh_theme', this.theme);
+                document.documentElement.setAttribute('data-theme', this.theme);
+                this.updateThemeIcon();
+            }
+
+            updateThemeIcon() {
+                const icon = document.getElementById('themeIcon');
+                icon.className = this.theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+            }
+
+            openModal(id) { 
+                this.closeModals(); 
+                document.getElementById(id).classList.add('active'); 
+            }
+            closeModals() { document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active')); }
+            checkCloseModal(e) { if(e.target.classList.contains('modal-overlay')) this.closeModals(); }
+        }
+
+        window.onload = () => { window.app = new App(); };
+    </script>
+</body>
+</html>
